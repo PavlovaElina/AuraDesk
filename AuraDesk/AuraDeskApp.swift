@@ -22,7 +22,9 @@ struct WindowAccessor: NSViewRepresentable {
                 window.titlebarAppearsTransparent = true
                 window.isOpaque = false
                 window.backgroundColor = .clear
-                window.hasShadow = true
+                window.hasShadow = false
+                window.isMovableByWindowBackground = true
+                window.styleMask.insert(.fullSizeContentView)
             }
         }
 
