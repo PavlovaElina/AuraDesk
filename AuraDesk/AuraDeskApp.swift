@@ -23,7 +23,7 @@ struct WindowAccessor: NSViewRepresentable {
                 window.isOpaque = false
                 window.backgroundColor = .clear
                 window.hasShadow = false
-                window.isMovableByWindowBackground = true
+                window.isMovableByWindowBackground = false
                 window.styleMask.insert(.fullSizeContentView)
             }
         }
