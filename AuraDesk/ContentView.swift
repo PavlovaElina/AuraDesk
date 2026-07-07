@@ -1,31 +1,36 @@
 import SwiftUI
 
 struct ContentView: View {
-    private let canvasWidth: Double = 820
-    private let canvasHeight: Double = 560
+    private let canvasWidth: Double = 980
+    private let canvasHeight: Double = 680
 
     private let startX: Double = 40
     private let startY: Double = 70
-    private let slotWidth: Double = 300
-    private let slotHeight: Double = 220
-    private let widgetGap: Double = 20
+    private let cellSize: Double = 140
+    private let gridGap: Double = 8
+
+    private var step: Double {
+        cellSize + gridGap
+    }
 
     @State private var widgets: [WidgetItem] = [
         WidgetItem(
             type: .photo,
             x: 40,
             y: 70,
-            width: 240,
-            height: 180,
-            color: .pink
+            width: 288,
+            height: 140,
+            sizePreset: .smallRectangle,
+            color: .blush
         ),
         WidgetItem(
             type: .note,
             x: 40,
-            y: 290,
-            width: 260,
-            height: 180,
-            color: .purple,
+            y: 218,
+            width: 288,
+            height: 140,
+            sizePreset: .smallRectangle,
+            color: .lavender,
             noteText: "Today:\n- Build AuraDesk\n- Add widgets"
         )
     ]
@@ -39,11 +44,11 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             if isEditMode {
-                SlotGridBackgroundView(
+                CompactGridBackgroundView(
                     startX: startX,
                     startY: startY,
-                    slotWidth: slotWidth,
-                    slotHeight: slotHeight,
+                    cellSize: cellSize,
+                    gap: gridGap,
                     width: canvasWidth,
                     height: canvasHeight
                 )
@@ -67,8 +72,8 @@ struct ContentView: View {
                         addDefaultWidget(shouldOpenSettings: true)
                     },
                     onDragEnded: {
-                        widget.x = snapToSlotX(widget.x)
-                        widget.y = snapToSlotY(widget.y)
+                        widget.x = snapToGridX(widget.x)
+                        widget.y = snapToGridY(widget.y)
 
                         if isOutOfBounds(widget) || overlapsWithOtherWidgets(widget) {
                             if let start = dragStartPositions[widget.id] {
@@ -97,6 +102,14 @@ struct ContentView: View {
                     }
                 )
             }
+
+            VStack {
+                MediaIslandView()
+                    .padding(.top, 12)
+
+                Spacer()
+            }
+            .allowsHitTesting(true)
 
             topToolbar
         }
@@ -195,14 +208,26 @@ struct ContentView: View {
 
         updatedWidget.width = snapSize(updatedWidget.width)
         updatedWidget.height = snapSize(updatedWidget.height)
-        updatedWidget.x = snapToSlotX(updatedWidget.x)
-        updatedWidget.y = snapToSlotY(updatedWidget.y)
+        updatedWidget.x = snapToGridX(updatedWidget.x)
+        updatedWidget.y = snapToGridY(updatedWidget.y)
 
         let oldWidget = widgets[index]
         widgets[index] = updatedWidget
 
         if isOutOfBounds(updatedWidget) || overlapsWithOtherWidgets(updatedWidget) {
-            widgets[index] = oldWidget
+            let newPosition = findAvailablePosition(
+                width: updatedWidget.width,
+                height: updatedWidget.height,
+                ignoring: updatedWidget.id
+            )
+
+            updatedWidget.x = newPosition.x
+            updatedWidget.y = newPosition.y
+            widgets[index] = updatedWidget
+
+            if isOutOfBounds(updatedWidget) || overlapsWithOtherWidgets(updatedWidget) {
+                widgets[index] = oldWidget
+            }
         }
 
         settingsDraftWidget = nil
@@ -215,7 +240,7 @@ struct ContentView: View {
     }
 
     private func addDefaultWidget(shouldOpenSettings: Bool) {
-        let size = defaultSize(for: .photo)
+        let size = WidgetSizePreset.smallRectangle.size
         let position = findAvailablePosition(width: size.width, height: size.height)
 
         let newWidget = WidgetItem(
@@ -224,7 +249,9 @@ struct ContentView: View {
             y: position.y,
             width: size.width,
             height: size.height,
-            color: .pink,
+            sizePreset: .smallRectangle,
+            backgroundKind: .color,
+            color: .blush,
             noteText: "New note"
         )
 
@@ -233,21 +260,6 @@ struct ContentView: View {
 
         if shouldOpenSettings {
             openSettings(for: newWidget.id)
-        }
-    }
-
-    private func defaultSize(for type: WidgetType) -> CGSize {
-        switch type {
-        case .clock:
-            return CGSize(width: 300, height: 170)
-        case .note:
-            return CGSize(width: 260, height: 180)
-        case .calendar:
-            return CGSize(width: 220, height: 180)
-        case .battery:
-            return CGSize(width: 220, height: 180)
-        case .photo:
-            return CGSize(width: 240, height: 180)
         }
     }
 
@@ -261,25 +273,33 @@ struct ContentView: View {
         }
     }
 
-    private func findAvailablePosition(width: Double, height: Double) -> CGPoint {
+    private func findAvailablePosition(
+        width: Double,
+        height: Double,
+        ignoring ignoredID: UUID? = nil
+    ) -> CGPoint {
         var column = 0
 
-        while startX + Double(column) * slotWidth + width <= canvasWidth - widgetGap {
+        while startX + Double(column) * step + width <= canvasWidth - gridGap {
             var row = 0
 
-            while startY + Double(row) * slotHeight + height <= canvasHeight - widgetGap {
+            while startY + Double(row) * step + height <= canvasHeight - gridGap {
                 let candidate = CGRect(
-                    x: startX + Double(column) * slotWidth,
-                    y: startY + Double(row) * slotHeight,
+                    x: startX + Double(column) * step,
+                    y: startY + Double(row) * step,
                     width: width,
                     height: height
                 )
 
                 let hasOverlap = widgets.contains { widget in
-                    candidate.intersects(
+                    guard widget.id != ignoredID else {
+                        return false
+                    }
+
+                    return candidate.intersects(
                         frame(for: widget).insetBy(
-                            dx: -widgetGap / 2,
-                            dy: -widgetGap / 2
+                            dx: -gridGap / 2,
+                            dy: -gridGap / 2
                         )
                     )
                 }
@@ -300,27 +320,24 @@ struct ContentView: View {
         return CGPoint(x: startX, y: startY)
     }
 
-    private func snapToSlotX(_ value: Double) -> Double {
+    private func snapToGridX(_ value: Double) -> Double {
         let relative = value - startX
-        let column = (relative / slotWidth).rounded()
-        return startX + column * slotWidth
+        let column = (relative / step).rounded()
+        return startX + column * step
     }
 
-    private func snapToSlotY(_ value: Double) -> Double {
+    private func snapToGridY(_ value: Double) -> Double {
         let relative = value - startY
-        let row = (relative / slotHeight).rounded()
-        return startY + row * slotHeight
+        let row = (relative / step).rounded()
+        return startY + row * step
     }
 
     private func snapSize(_ value: Double) -> Double {
-        (value / 20).rounded() * 20
+        (value / gridGap).rounded() * gridGap
     }
 
     private func overlapsWithOtherWidgets(_ widget: WidgetItem) -> Bool {
-        let currentFrame = frame(for: widget).insetBy(
-            dx: -widgetGap / 2,
-            dy: -widgetGap / 2
-        )
+        let currentFrame = frame(for: widget).insetBy(dx: -gridGap / 2, dy: -gridGap / 2)
 
         return widgets.contains { otherWidget in
             guard otherWidget.id != widget.id else {
@@ -404,16 +421,19 @@ struct DraggableWidgetView: View {
             .contextMenu {
                 if isEditMode {
                     Button("Settings") {
+                        isHovered = false
                         onOpenSettings()
                     }
 
                     Button("Add Widget") {
+                        isHovered = false
                         onAddWidget()
                     }
 
                     Divider()
 
                     Button("Delete", role: .destructive) {
+                        isHovered = false
                         onDelete()
                     }
                 }
@@ -430,6 +450,7 @@ struct DraggableWidgetView: View {
 
     private var deleteButton: some View {
         Button {
+            isHovered = false
             onDelete()
         } label: {
             Image(systemName: "trash")
@@ -447,6 +468,7 @@ struct DraggableWidgetView: View {
     private var hoverToolbar: some View {
         HStack(spacing: 14) {
             Button {
+                isHovered = false
                 onAddWidget()
             } label: {
                 Image(systemName: "plus")
@@ -454,6 +476,7 @@ struct DraggableWidgetView: View {
             .buttonStyle(.plain)
 
             Button {
+                isHovered = false
                 onOpenSettings()
             } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -471,13 +494,17 @@ struct DraggableWidgetView: View {
     }
 }
 
-struct SlotGridBackgroundView: View {
+struct CompactGridBackgroundView: View {
     let startX: Double
     let startY: Double
-    let slotWidth: Double
-    let slotHeight: Double
+    let cellSize: Double
+    let gap: Double
     let width: Double
     let height: Double
+
+    private var step: Double {
+        cellSize + gap
+    }
 
     var body: some View {
         Canvas { context, _ in
@@ -487,14 +514,14 @@ struct SlotGridBackgroundView: View {
             while x <= width {
                 path.move(to: CGPoint(x: x, y: 0))
                 path.addLine(to: CGPoint(x: x, y: height))
-                x += slotWidth
+                x += step
             }
 
             var y = startY
             while y <= height {
                 path.move(to: CGPoint(x: 0, y: y))
                 path.addLine(to: CGPoint(x: width, y: y))
-                y += slotHeight
+                y += step
             }
 
             context.stroke(
